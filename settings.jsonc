@@ -1,0 +1,53 @@
+{
+    // ============================================================
+    // OpenCode Helper — Configuration
+    // ============================================================
+    // This file uses JSONC format (JSON + // line comments).
+    // All paths are auto‑detected via XDG.  Override only if the
+    // defaults donʼt match your setup.
+
+    // ── Session Cleanup ─────────────────────────────────────────
+    // Retention for session records in the SQLite database.
+    // Sessions older than this will be deleted (with CASCADE).
+    "session_retention_days": 7,
+
+    // Automatically back up the database before deleting.
+    "session_auto_backup": true,
+
+    // Run VACUUM after session deletion to reclaim disk space.
+    "session_auto_vacuum": true,
+
+
+    // ── Temp File Cleanup ───────────────────────────────────────
+    // Only affects  %TEMP%\\opencode\\  (AI‑generated scripts,
+    // cloned repos, data files).  Does NOT touch any other path.
+
+    // Loose files (scripts, JSON data, etc.) older than N days.
+    "temp_script_retention_days": 1,
+
+    // Project directories (cloned repos, scaffolds) older than N days.
+    "temp_project_retention_days": 1,
+
+
+    // ── Session Save List ───────────────────────────────────────
+    // Session IDs listed here will NEVER be deleted, regardless of
+    // age.  Values are optional descriptions for your own reference.
+    // Find session IDs by running a dry‑run:  python -m cleanup.session
+    "session_save_list": {
+        
+    },
+
+
+    // ── Paths (auto‑detected — override only if needed) ─────────
+    // Set to a full path to override the default SQLite database location.
+    // Default:  %XDG_DATA_HOME%/opencode/opencode.db
+    "db_path_override": null,
+
+
+    // ── Analysis ──────────────────────────────────────────
+    // Language for AI-generated analysis reports.
+    // Supported: "en" (English), "zh-CN" (Simplified Chinese),
+    //            "zh-TW" (Traditional Chinese), "ja" (Japanese),
+    //            or any plain instruction like "in French".
+    "analysis_language": "en"
+}
