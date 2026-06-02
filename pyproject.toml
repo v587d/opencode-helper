@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 [project.scripts]
-osh = "main:main"
+och = "main:main"
 
 [tool.setuptools]
 py-modules = ["utilities", "main"]

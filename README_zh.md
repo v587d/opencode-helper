@@ -82,34 +82,34 @@ cd opencode-helper
 
 # 方式 A：全局安装（推荐）
 pip install -e .
-osh --help              # 任意目录直接使用
+och --help              # 任意目录直接使用
 
 # 方式 B：直接运行（无需安装）
 python main.py --help   # 需在项目根目录
 ```
 
-通过 `osh`（推荐）或 `python main.py` 调用 CLI。`analysis/*` 子命令还需要 [`opencode`](https://github.com/sst/opencode) 二进制在 `PATH` 中（因为会派生 `opencode run` 来获取 AI 解读）。
+通过 `och`（推荐）或 `python main.py` 调用 CLI。`analysis/*` 子命令还需要 [`opencode`](https://github.com/sst/opencode) 二进制在 `PATH` 中（因为会派生 `opencode run` 来获取 AI 解读）。
 
 ## 快速上手
 
 ```bash
 # 1. 查看所有命令
-osh --help
+och --help
 
 # 2. 看看 OpenCode 一直在干什么
-osh harness
+och harness
 
 # 3. 检查工具使用效率
-osh tools
+och tools
 
 # 4. 找出可清理的 session（dry-run，OpenCode 运行中也安全）
-osh session
+och session
 
 # 5. 真正清理（必须先关闭 OpenCode）
-osh session --execute
+och session --execute
 
 # 6. 清掉过期的临时文件
-osh tempfile --execute
+och tempfile --execute
 ```
 
 通过 `python main.py` 在项目根目录调用 CLI。`analysis/*` 子命令还需要 [`opencode`](https://github.com/sst/opencode) 二进制在 `PATH` 中(因为会派生 `opencode run` 来获取 AI 解读)。
@@ -144,22 +144,22 @@ python main.py tempfile --execute
 
 ```bash
 # Dry-run: 列出将被删除的内容
-osh session
+och session
 
 # Execute: 删除 + VACUUM
-osh session --execute
+och session --execute
 
 # 保留 14 天而不是 7 天
-osh session --execute --days 14
+och session --execute --days 14
 
 # 跳过备份（不推荐）
-osh session --execute --no-backup
+och session --execute --no-backup
 
 # 永久保留特定 session
-osh session --add ses_abc123
-osh session --add ses_abc123 --label "我的重构 session"
-osh session --list
-osh session --remove ses_abc123
+och session --add ses_abc123
+och session --add ses_abc123 --label "我的重构 session"
+och session --list
+och session --remove ses_abc123
 ```
 
 - **默认保留期**: `settings.jsonc` 中的 `session_retention_days`(7 天)。
@@ -172,16 +172,16 @@ osh session --remove ses_abc123
 
 ```bash
 # Dry-run
-osh tempfile
+och tempfile
 
 # Execute
-osh tempfile --execute
+och tempfile --execute
 
 # 激进策略：脚本 3 天、项目 5 天
-osh tempfile --execute --scripts 3 --projects 5
+och tempfile --execute --scripts 3 --projects 5
 
 # 安静模式（不打印每个文件）
-osh tempfile --execute --quiet
+och tempfile --execute --quiet
 ```
 
 - **范围严格收敛** — 只动 `%TEMP%\opencode\`。不会动数据目录、系统 Temp 根目录、其它任何位置。
@@ -194,13 +194,13 @@ osh tempfile --execute --quiet
 
 ```bash
 # 最近 7 天（默认），带 AI 解读
-osh harness
+och harness
 
 # 最近 30 天
-osh harness --days 30
+och harness --days 30
 
 # 只要数据，跳过 AI
-osh harness --no-ai
+och harness --no-ai
 ```
 
 输出: Session 概览、生命周期(时长/消息数)、Agent 切换事件、归档 vs. 活跃数量、效率快照、**AI 优化建议**。
@@ -209,13 +209,13 @@ osh harness --no-ai
 
 ```bash
 # 所有 session
-osh tools
+och tools
 
 # 单个 session
-osh tools --session ses_abc123
+och tools --session ses_abc123
 
 # 只要数据
-osh tools --no-ai
+och tools --no-ai
 ```
 
 输出: 工具调用分布与错误率、**Read:Edit 比例**(目标 >6.0)、工具错误明细、重试链检测(3+ 连续同工具失败)。
@@ -224,15 +224,15 @@ osh tools --no-ai
 
 ```bash
 # 所有 MCP server
-osh mcp
+och mcp
 
 # 只看某个 server
-osh mcp --server tavily
-osh mcp --server websearch
-osh mcp --server context7
+och mcp --server tavily
+och mcp --server websearch
+och mcp --server context7
 
 # 只要数据
-osh mcp --no-ai
+och mcp --no-ai
 ```
 
 输出: 每个工具的概览、按 server 汇总、按工具分组的错误明细、**AI 根因诊断**。
@@ -241,13 +241,13 @@ osh mcp --no-ai
 
 ```bash
 # Top 10 模型
-osh models
+och models
 
 # Top 20
-osh models --limit 20
+och models --limit 20
 
 # 只要数据
-osh models --no-ai
+och models --no-ai
 ```
 
 输出: 模型使用分布(调用、花费、Token)、模型切换事件、Agent-Model 交叉分析、**AI 解读**。
@@ -256,13 +256,13 @@ osh models --no-ai
 
 ```bash
 # 所有 skill
-osh skills
+och skills
 
 # Top 10
-osh skills --limit 10
+och skills --limit 10
 
 # 只要数据
-osh skills --no-ai
+och skills --no-ai
 ```
 
 输出: Skill 调用次数和错误率、Shell 工具使用(标记 Windows 上误用 bash)、用户消息中引用的 Skill、**AI 兼容性诊断**。

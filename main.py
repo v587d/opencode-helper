@@ -30,7 +30,7 @@ from analysis.tools import register_subparser as register_tools
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="osh",
+        prog="och",
         description="OpenCode Helper — extend OpenCode beyond official capabilities",
     )
     subparsers = parser.add_subparsers(

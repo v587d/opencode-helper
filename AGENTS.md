@@ -9,7 +9,7 @@ Personal OpenCode helper project — extending OpenCode beyond official capabili
 ```
 ├── main.py              # Unified CLI entry point (subcommand dispatcher)
 ├── utilities.py         # Shared utilities (config, logging, DB, paths)
-├── pyproject.toml       # Build config + console_scripts (osh)
+├── pyproject.toml       # Build config + console_scripts (och)
 ├── settings.jsonc       # Configuration (JSONC format with comments)
 ├── tests/               # Unit tests (stdlib unittest)
 │   └── test_utilities.py
@@ -34,17 +34,17 @@ Personal OpenCode helper project — extending OpenCode beyond official capabili
 
 ## Critical Commands
 
-### Via `osh` (recommended, after `pip install -e .`)
+### Via `och` (recommended, after `pip install -e .`)
 ```bash
-osh --help
-osh session              # dry-run session cleanup
-osh session --execute    # delete old sessions
-osh tempfile --execute   # delete temp files
-osh harness              # overall session review
-osh tools                # tool efficiency analysis
-osh mcp                  # MCP analysis
-osh models               # model usage patterns
-osh skills               # skill usage + platform compat
+och --help
+och session              # dry-run session cleanup
+och session --execute    # delete old sessions
+och tempfile --execute   # delete temp files
+och harness              # overall session review
+och tools                # tool efficiency analysis
+och mcp                  # MCP analysis
+och models               # model usage patterns
+och skills               # skill usage + platform compat
 ```
 
 ### Via `python main.py` (no install needed)
@@ -112,7 +112,7 @@ Dry-run mode is read-only and safe to run at any time.
 ## Development Notes
 
 ### Running Scripts
-- Must run from repository root or use `osh` command (if installed)
+- Must run from repository root or use `och` command (if installed)
 - Scripts handle `sys.path` insertion for relative imports
 - No external dependencies — stdlib only (sqlite3, json, pathlib, etc.)
 
