@@ -27,6 +27,7 @@ A unified Python CLI that extends [OpenCode](https://github.com/sst/opencode) be
   - [analysis](#analysis)
 - [Configuration](#configuration)
 - [Safety Model](#safety-model)
+- [Limitations](#limitations)
 - [Requirements](#requirements)
 - [Architecture](#architecture)
 - [License](#license)
@@ -76,7 +77,8 @@ Every analysis command reads the live OpenCode database and produces a report. M
 
 ```bash
 # Clone the repo
-git clone https://github.com/<your-username>/Opencode-Helper.git
+git clone https://github.com/v587d/opencode-helper.git
+
 cd Opencode-Helper
 
 # That's it. No dependencies to install.
@@ -286,6 +288,16 @@ Opencode-Helper is built to be hard to misuse:
 | **Narrow scope** | `tempfile` only touches `%TEMP%\opencode\`. Never your data directory, never system temp root, never anything else. |
 | **Read-only analysis** | All `analysis/*` commands are pure read against the database. Safe to run with OpenCode live. |
 | **WAL-safe VACUUM** | The cleanup sequence pre-checkpoints and post-checkpoints to keep WAL mode consistent. |
+
+## Limitations
+
+Opencode-Helper works by directly inspecting OpenCode's internals. This brings some inherent limitations you should be aware of:
+
+| Limitation | Impact | Mitigation |
+|---|---|---|
+| **Private SQLite schema** | `opencode.db` schema is OpenCode's internal contract — not a public API. A future OpenCode update that renames tables, adds columns, or changes data formats **may break this tool** without warning. | Most analysis queries are simple SELECTs on stable tables (`session`, `message`, `part`). Cleanup uses CASCADE deletes which are robust to schema additions. Report breakage via GitHub Issues. |
+| **`opencode` CLI dependency** | `analysis/*` subcommands spawn `opencode run` for AI interpretation. If OpenCode is not installed or not on `PATH`, these subcommands will fail. | Use `--no-ai` to get data-only output (no CLI needed). Cleanup subcommands (`session`, `tempfile`) **never** require OpenCode. |
+| **Windows-only process detection** | The safety check (`opencode.exe` is running?) uses `tasklist` and PowerShell, which are Windows-specific. On macOS/Linux, this check simply won't fire — you must close OpenCode manually before running `--execute`. | PRs welcome for `pgrep` / `ps`-based detection on Unix. |
 
 ## Requirements
 
