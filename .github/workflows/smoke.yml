@@ -1,0 +1,43 @@
+name: Smoke Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Smoke — main help
+        run: python main.py --help
+
+      - name: Smoke — subcommand help (no DB required)
+        run: |
+          python main.py session --help
+          python main.py tempfile --help
+          python main.py harness --help
+          python main.py tools --help
+          python main.py mcp --help
+          python main.py models --help
+          python main.py skills --help
+
+      - name: Smoke — import modules
+        run: |
+          python -c "import utilities"
+          python -c "from cleanup import session; from cleanup import tempfile"
+          python -c "from analysis import common, harness, tools, mcp, models, skills"
