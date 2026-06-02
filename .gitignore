@@ -50,6 +50,9 @@ desktop.ini
 *.db-shm
 *.db-journal
 
+# ─── Editable install artifacts ───────────────────────────────────────────────
+opencode_helper.egg-info/
+
 # ─── Analysis output (regenerated on demand) ─────────────────────────────────
 analysis_output/
 reports/

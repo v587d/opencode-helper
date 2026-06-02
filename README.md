@@ -78,36 +78,38 @@ Every analysis command reads the live OpenCode database and produces a report. M
 ```bash
 # Clone the repo
 git clone https://github.com/v587d/opencode-helper.git
+cd opencode-helper
 
-cd Opencode-Helper
+# Option A: Install globally (recommended)
+pip install -e .
+osh --help              # ready to use from anywhere
 
-# That's it. No dependencies to install.
-# Just make sure you have Python 3.10 or newer.
-python --version   # should report 3.10+
+# Option B: Run directly (no install needed)
+python main.py --help   # must run from project root
 ```
 
-The CLI is invoked through `python main.py` from the project root. For analysis subcommands you also need the [`opencode`](https://github.com/sst/opencode) binary on your `PATH` (it spawns `opencode run` for AI interpretation).
+The CLI is invoked through `osh` (if installed) or `python main.py`. For analysis subcommands you also need the [`opencode`](https://github.com/sst/opencode) binary on your `PATH` (it spawns `opencode run` for AI interpretation).
 
 ## Quick Start
 
 ```bash
 # 1. List every command
-python main.py --help
+osh --help
 
 # 2. See what OpenCode has been doing
-python main.py harness
+osh harness
 
 # 3. Check tool efficiency
-python main.py tools
+osh tools
 
 # 4. Find cleanup candidates (dry-run, safe with OpenCode running)
-python main.py session
+osh session
 
 # 5. Actually clean (must exit OpenCode first)
-python main.py session --execute
+osh session --execute
 
 # 6. Purge stale temp files
-python main.py tempfile --execute
+osh tempfile --execute
 ```
 
 ## Commands
@@ -118,22 +120,22 @@ python main.py tempfile --execute
 
 ```bash
 # Dry-run: show what would be deleted
-python main.py session
+osh session
 
 # Execute: delete + VACUUM
-python main.py session --execute
+osh session --execute
 
 # Keep 14 days instead of 7
-python main.py session --execute --days 14
+osh session --execute --days 14
 
 # Skip backup (not recommended)
-python main.py session --execute --no-backup
+osh session --execute --no-backup
 
 # Preserve specific sessions
-python main.py session --add ses_abc123
-python main.py session --add ses_abc123 --label "My refactor session"
-python main.py session --list
-python main.py session --remove ses_abc123
+osh session --add ses_abc123
+osh session --add ses_abc123 --label "My refactor session"
+osh session --list
+osh session --remove ses_abc123
 ```
 
 - **Default retention**: `session_retention_days` from `settings.jsonc` (7 days).
@@ -146,16 +148,16 @@ python main.py session --remove ses_abc123
 
 ```bash
 # Dry-run
-python main.py tempfile
+osh tempfile
 
 # Execute
-python main.py tempfile --execute
+osh tempfile --execute
 
 # Aggressive: 3 days for scripts, 5 for projects
-python main.py tempfile --execute --scripts 3 --projects 5
+osh tempfile --execute --scripts 3 --projects 5
 
 # Quiet mode (no per-file messages)
-python main.py tempfile --execute --quiet
+osh tempfile --execute --quiet
 ```
 
 - **Scope is narrow on purpose** — only `%TEMP%\opencode\`. Will not touch your actual data directory, system temp, or anything else.
@@ -168,13 +170,13 @@ python main.py tempfile --execute --quiet
 
 ```bash
 # Last 7 days (default), with AI interpretation
-python main.py harness
+osh harness
 
 # Last 30 days
-python main.py harness --days 30
+osh harness --days 30
 
 # Data only, skip AI
-python main.py harness --no-ai
+osh harness --no-ai
 ```
 
 Produces: session overview, lifecycle (duration / message count), agent-switching events, archive vs. active counts, efficiency snapshot, **AI optimization suggestions**.
@@ -183,13 +185,13 @@ Produces: session overview, lifecycle (duration / message count), agent-switchin
 
 ```bash
 # All sessions
-python main.py tools
+osh tools
 
 # Single session
-python main.py tools --session ses_abc123
+osh tools --session ses_abc123
 
 # Data only
-python main.py tools --no-ai
+osh tools --no-ai
 ```
 
 Produces: tool call distribution with error rates, **Read:Edit ratio** (target >6.0), tool error details, retry-chain detection (3+ consecutive same-tool errors).
@@ -198,15 +200,15 @@ Produces: tool call distribution with error rates, **Read:Edit ratio** (target >
 
 ```bash
 # All MCP servers
-python main.py mcp
+osh mcp
 
 # One server only
-python main.py mcp --server tavily
-python main.py mcp --server websearch
-python main.py mcp --server context7
+osh mcp --server tavily
+osh mcp --server websearch
+osh mcp --server context7
 
 # Data only
-python main.py mcp --no-ai
+osh mcp --no-ai
 ```
 
 Produces: per-tool overview, per-server summary, error breakdown grouped by tool, **AI root-cause diagnosis** of recurring errors.
@@ -215,13 +217,13 @@ Produces: per-tool overview, per-server summary, error breakdown grouped by tool
 
 ```bash
 # Top 10 models
-python main.py models
+osh models
 
 # Top 20
-python main.py models --limit 20
+osh models --limit 20
 
 # Data only
-python main.py models --no-ai
+osh models --no-ai
 ```
 
 Produces: model usage distribution (calls, cost, tokens), model switching events, agent-model cross analysis, **AI interpretation**.
@@ -230,13 +232,13 @@ Produces: model usage distribution (calls, cost, tokens), model switching events
 
 ```bash
 # All skills
-python main.py skills
+osh skills
 
 # Top 10
-python main.py skills --limit 10
+osh skills --limit 10
 
 # Data only
-python main.py skills --no-ai
+osh skills --no-ai
 ```
 
 Produces: skill invocation counts and error rates, shell tool usage (flags bash-on-Windows), skills referenced in user messages, **AI compatibility diagnosis**.
