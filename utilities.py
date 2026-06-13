@@ -34,6 +34,8 @@ _DEFAULT_SETTINGS = {
     "temp_project_retention_days": 1,
     "db_path_override": None,
     "analysis_language": "en",
+    "analysis_model": None,
+    "analysis_variant": None,
 }
 
 

@@ -55,7 +55,7 @@ OpenCode is a fantastic AI coding agent, but it leaves some gaps in daily use:
 
 ### 📊 Analysis
 
-Every analysis command reads the live OpenCode database and produces a report. Most commands also call `opencode run` (using an auto-selected **free model**) to produce an AI-written interpretation.
+Every analysis command reads the live OpenCode database and produces a report. Most commands also call `opencode run` to produce an AI-written interpretation. The model used defaults to an auto-selected **free model**, unless you override it with `analysis_model` in `settings.jsonc`. If the configured model fails, it automatically falls back to a free model.
 
 | Command | What it does |
 |---|---|
@@ -271,7 +271,15 @@ All knobs live in [`settings.jsonc`](settings.jsonc) (JSON-with-comments format)
     // AI analysis output language
     // Supported: "en", "zh-CN", "zh-TW", "ja", "ko", "fr", "de", "es", "pt", "ru"
     // or any plain instruction like "in French"
-    "analysis_language": "en"
+    "analysis_language": "en",
+
+    // Model for AI analysis.  If null, a free model is auto-selected.
+    // Example: "opencode/mimo-v2.5-free"
+    "analysis_model": null,
+
+    // Model variant (reasoning effort). Supported by some models: "low", "medium", "high".
+    // "low" can reduce tool-calling overhead. If null, no variant is passed.
+    "analysis_variant": null
 }
 ```
 

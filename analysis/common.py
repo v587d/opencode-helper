@@ -6,7 +6,9 @@ Zero external dependencies — stdlib only.
 """
 
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 from utilities import get_db_connection, get_settings, setup_logging
@@ -146,63 +148,106 @@ def pick_free_model() -> str:
     return "opencode/mimo-v2.5-free"
 
 
+def pick_analysis_model() -> str:
+    """Return the model to use for AI analysis.
+
+    Priority:
+      1. ``analysis_model`` from settings.jsonc if set.
+      2. Best available free model discovered via ``opencode models``.
+      3. Hardcoded fallback.
+    """
+    configured = get_settings().get("analysis_model")
+    if configured:
+        log.info("Using configured analysis model: %s", configured)
+        return configured
+    return pick_free_model()
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  AI invocation
 # ═══════════════════════════════════════════════════════════════════
 
-def invoke(prompt: str, model: str | None = None, timeout: int = 300) -> str:
-    """Invoke OpenCode agent for AI analysis.  Uses free model by default.
 
-    Launches ``opencode run --format json`` as a subprocess and collects
-    all ``text`` events from the JSON Lines output.
+def _run_opencode(prompt: str, model: str, timeout: int) -> tuple[int, str, str]:
+    """Run opencode once and return (returncode, stdout, stderr).
 
-    Args:
-        prompt: The analysis prompt to send.
-        model: Model in ``provider/model`` format.  ``None`` = auto-select free.
-        timeout: Maximum wait time in seconds.
-
-    Returns:
-        The concatenated text response, or empty string on failure.
+    Writes the full prompt to a UTF-8 .md file and passes it via ``-f``
+    (attachment).  The inline message is a short ASCII instruction.
+    Uses ``shell=True`` with ``>`` file redirection to capture output,
+    because ``capture_output=True`` (PIPE) triggers server errors in
+    opencode's internal server on Windows.
     """
-    if model is None:
-        model = pick_free_model()
-        log.info("Auto-selected model: %s", model)
+    pid = os.getpid()
+    base = str(Path(tempfile.gettempdir()) / "opencode")
+    stdout_path = f"{base}\\och_out_{pid}.jsonl"
+    stderr_path = f"{base}\\och_err_{pid}.txt"
+    prompt_f_path = f"{base}\\och_prompt_{pid}.md"
 
-    cmd = [
+    # Write the full prompt as an attached file (UTF-8, no encoding issues)
+    try:
+        Path(prompt_f_path).write_text(prompt, encoding="utf-8")
+    except OSError:
+        log.error("Failed to write prompt temp file")
+        return -2, "", ""
+
+    # Build command list, then convert to safe shell string.
+    # Short inline message avoids shell encoding issues with long Unicode prompts.
+    short_msg = "Analyze the attached file according to the instructions within it."
+    cmd_args = [
         "opencode", "run", "--format", "json",
         "--model", model,
+        "-f", prompt_f_path,
         "--dangerously-skip-permissions",
-        prompt,
     ]
+    variant = get_settings().get("analysis_variant")
+    if variant:
+        cmd_args.extend(["--variant", variant])
+    cmd_args.append(short_msg)
+
+    cmd_str = subprocess.list2cmdline(cmd_args)
+    # Append file redirections AFTER list2cmdline quoting
+    full_cmd = f'{cmd_str} >"{stdout_path}" 2>"{stderr_path}"'
 
     print(f"  Waiting for AI response (model: {model})...", flush=True)
 
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="replace",
-        )
+        proc = subprocess.Popen(full_cmd, shell=True)
+        proc.wait(timeout=timeout)
+        rc = proc.returncode or 0
     except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+            proc.wait()
+        except Exception:
+            pass
         log.error("opencode timed out after %ds", timeout)
-        return ""
+        return -1, "", ""
     except FileNotFoundError:
         log.error("opencode not found — is OpenCode installed?")
-        return ""
+        return -2, "", ""
 
-    if result.returncode != 0:
-        log.error("opencode exit %d: %s", result.returncode, result.stderr[:300])
-        return ""
+    # Read captured output from temp files
+    try:
+        stdout = Path(stdout_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        stdout = ""
+    try:
+        stderr = Path(stderr_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        stderr = ""
 
-    if result.stdout is None:
-        log.error("opencode returned no stdout (encoding error?)")
-        return ""
+    # Clean up temp files
+    for path in (stdout_path, stderr_path, prompt_f_path):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
-    stdout = result.stdout.strip()
-    if not stdout:
-        log.error("opencode stdout empty. stderr: %s", result.stderr[:200] if result.stderr else "(none)")
-        return ""
+    return rc, stdout, stderr
 
-    # Collect all event types for debugging
+
+def _extract_response(stdout: str) -> str:
+    """Extract text response from opencode JSON Lines output."""
     text_parts = []
     event_types = {}
     for line in stdout.splitlines():
@@ -220,20 +265,50 @@ def invoke(prompt: str, model: str | None = None, timeout: int = 300) -> str:
     response = "\n".join(text_parts)
     if not response:
         log.warning("No text events found. Event types received: %s", event_types)
-        # Fallback: try step-finish or other events that might carry content
-        for line in stdout.splitlines():
-            if not line:
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if event.get("type") == "step-finish":
-                reason = event.get("part", {}).get("reason", "?")
-                log.info("step-finish reason: %s", reason)
-    else:
-        log.info("AI response: %d chars, events: %s", len(response), event_types)
+    return response
 
+
+def invoke(prompt: str, model: str | None = None, timeout: int = 300) -> str:
+    """Invoke OpenCode agent for AI analysis.  Uses configured model or free model by default.
+
+    Launches ``opencode run --format json`` as a subprocess and collects
+    all ``text`` events from the JSON Lines output.
+
+    Args:
+        prompt: The analysis prompt to send.
+        model: Model in ``provider/model`` format.  ``None`` = use configured model or auto-select free.
+        timeout: Maximum wait time in seconds.
+
+    Returns:
+        The concatenated text response, or empty string on failure.
+    """
+    configured_model = get_settings().get("analysis_model")
+    if model is None:
+        model = configured_model or pick_free_model()
+        log.info("Using analysis model: %s", model)
+
+    returncode, stdout, stderr = _run_opencode(prompt, model, timeout)
+
+    # If the configured model failed, fall back to a free model.
+    # Only do this when the caller did not explicitly pass a model.
+    if (returncode != 0 or not stdout.strip()) and model == configured_model:
+        fallback = pick_free_model()
+        if fallback != model:
+            log.warning("Configured model failed (%s), trying free fallback: %s", model, fallback)
+            returncode, stdout, stderr = _run_opencode(prompt, fallback, timeout)
+            model = fallback
+
+    if returncode != 0:
+        log.error("opencode exit %d: %s", returncode, stderr[:300])
+        return ""
+
+    if not stdout.strip():
+        log.error("opencode stdout empty. stderr: %s", stderr[:200] if stderr else "(none)")
+        return ""
+
+    response = _extract_response(stdout)
+    if response:
+        log.info("AI response: %d chars", len(response))
     return response
 
 

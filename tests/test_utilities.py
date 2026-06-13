@@ -106,7 +106,8 @@ class TestJSONCParsing(unittest.TestCase):
             result = {}
             for key in ["session_retention_days", "session_auto_backup",
                          "temp_script_retention_days", "analysis_language",
-                         "session_save_list", "db_path_override"]:
+                         "session_save_list", "db_path_override",
+                         "analysis_model", "analysis_variant"]:
                 if key in parsed:
                     result[key] = parsed[key]
             return result

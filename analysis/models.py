@@ -244,7 +244,8 @@ def run_ai_analysis(usage_rows, switch_rows, agent_rows, limit: int):
     if result:
         print(result)
     else:
-        print("  (AI analysis unavailable — no response received)")
+        print("  (AI analysis unavailable — the model / OpenCode CLI returned no usable response.)")
+        print("  Try: --no-ai for data-only output, or change analysis_model / analysis_variant in settings.jsonc.")
         log.warning("AI invocation returned empty result.")
 
 

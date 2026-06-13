@@ -259,7 +259,8 @@ def run(args: argparse.Namespace):
                 print_header("AI Interpretation")
                 print(result)
             else:
-                print("  AI invocation returned no result.")
+                print("  (AI analysis unavailable — the model / OpenCode CLI returned no usable response.)")
+                print("  Try: --no-ai for data-only output, or change analysis_model / analysis_variant in settings.jsonc.")
         else:
             print("  Prompt template not found — skipping AI interpretation.")
             print("  Create analysis/prompts/tool_efficiency.md to enable this feature.")

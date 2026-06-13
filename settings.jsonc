@@ -49,5 +49,15 @@
     // Supported: "en" (English), "zh-CN" (Simplified Chinese),
     //            "zh-TW" (Traditional Chinese), "ja" (Japanese),
     //            or any plain instruction like "in French".
-    "analysis_language": "en"
+    "analysis_language": "zh-CN",
+
+    // Model for AI analysis.  If null, a free model is auto-selected.
+    // Example: "opencode/mimo-v2.5-free"
+    // Pure text, free model: "opencode/nemotron-3-ultra-free"
+    // Opencode Go:opencode-go/deepseek-v4-pro
+    "analysis_model": "opencode-go/deepseek-v4-flash",
+
+    // Model variant (reasoning effort).  Some models support: "low", "medium", "high".
+    // "low" can reduce tool-calling / reasoning overhead.  If null, no variant is passed.
+    "analysis_variant": "low"
 }

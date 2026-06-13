@@ -262,7 +262,8 @@ def run(args: argparse.Namespace):
             if result:
                 print(result)
             else:
-                print("  (AI returned no response)")
+                print("  (AI analysis unavailable — the model / OpenCode CLI returned no usable response.)")
+                print("  Try: --no-ai for data-only output, or change analysis_model / analysis_variant in settings.jsonc.")
         else:
             print("  (Prompt template not found — skipping AI diagnosis)")
         print()
