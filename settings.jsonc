@@ -59,5 +59,32 @@
 
     // Model variant (reasoning effort).  Some models support: "low", "medium", "high".
     // "low" can reduce tool-calling / reasoning overhead.  If null, no variant is passed.
-    "analysis_variant": "low"
+    "analysis_variant": "low",
+
+
+    // ── Analysis Compression (opt-in, all default to 0 = OFF) ──────
+    // Long sessions can produce prompts that exceed the model's context window,
+    // causing truncation or misinterpretation.  Set any of these to a positive
+    // value to activate that specific limit.  Set ALL to 0 to keep legacy
+    // "no compression" behavior.
+
+    // Max characters per individual error message in AI prompts.
+    // 0 = no truncation.  Recommended: 200.
+    "analysis_max_error_chars": 0,
+
+    // Max total characters in the final AI prompt (whole-template cap).
+    // 0 = no limit.  Recommended: 30000 (≈8K tokens for most free models).
+    "analysis_max_total_chars": 0,
+
+    // Max data rows injected into the AI prompt per section.
+    // 0 = no limit.  Recommended: 20.
+    "analysis_max_rows_per_section": 0,
+
+    // For error dedup: how many leading characters must match to fold two
+    // error messages into the same bucket.  0 = disable dedup.  Recommended: 80.
+    "analysis_error_dedup_prefix": 0,
+
+    // For error dedup: how many unique error patterns to keep before folding
+    // the rest into an "(other)" summary line.  0 = disable dedup.  Recommended: 10.
+    "analysis_error_dedup_top_k": 0
 }

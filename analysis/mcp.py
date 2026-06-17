@@ -21,7 +21,7 @@ import sys
 from collections import defaultdict
 
 from utilities import print_header, print_separator, setup_logging
-from analysis.common import query, invoke, render_prompt
+from analysis.common import query, invoke, render_prompt, truncate, head_tail, dedup_errors
 
 log = setup_logging("mcp")
 
@@ -236,22 +236,49 @@ def run(args: argparse.Namespace):
         print_header("AI Root Cause Diagnosis")
         print("  Querying AI for error analysis...\n")
 
+        # Compression settings (all 0 = disabled, opt-in)
+        from utilities import get_settings
+        _cs = get_settings()
+        _max_err = int(_cs.get("analysis_max_error_chars", 0) or 0)
+        _max_rows = int(_cs.get("analysis_max_rows_per_section", 0) or 0)
+        _dedup_pre = int(_cs.get("analysis_error_dedup_prefix", 0) or 0)
+        _dedup_k = int(_cs.get("analysis_error_dedup_top_k", 0) or 0)
+
+        # Optional: fold similar MCP error messages into shared buckets
+        if _dedup_pre > 0:
+            errors_for_prompt = dedup_errors(errors, prefix_len=_dedup_pre, top_k=_dedup_k)
+        else:
+            errors_for_prompt = errors
+
+        # Optional: cap rows per section
+        overview_slice = overview[:_max_rows] if _max_rows > 0 else overview
+        err_slice = errors_for_prompt[:_max_rows] if _max_rows > 0 else errors_for_prompt
+
         # Build context for the prompt
         overview_lines = []
-        for tool, total, errs in overview:
+        for tool, total, errs in overview_slice:
             if server_filter and classify_tool(tool) != server_filter:
                 continue
             err_pct = f"{errs / total * 100:.1f}%" if total > 0 else "0%"
             overview_lines.append(f"  {tool}: {total} calls, {errs} errors ({err_pct})")
+        if _max_rows > 0 and len(overview) > _max_rows:
+            overview_lines.append(f"  ... and {len(overview) - _max_rows} more tool(s)")
 
         error_lines = []
-        for tool, msg, cnt in errors:
+        for tool, msg, cnt in err_slice:
             if server_filter and classify_tool(tool) != server_filter:
                 continue
-            error_lines.append(f"  {tool} [{cnt}x]: {msg or '(empty)'}")
+            # Optional: truncate + head/tail sample for long error messages
+            display_msg = msg or "(empty)"
+            if _max_err > 0:
+                display_msg = head_tail(truncate(display_msg, _max_err), 80, 40)
+            error_lines.append(f"  {tool} [{cnt}x]: {display_msg}")
+        if _max_rows > 0 and len(errors_for_prompt) > _max_rows:
+            error_lines.append(f"  ... and {len(errors_for_prompt) - _max_rows} more error pattern(s)")
 
         prompt = render_prompt(
             "mcp_analysis",
+            command="mcp",  # for enforce_budget section priority
             overview_data="\n".join(overview_lines) if overview_lines else "  (no data)",
             error_data="\n".join(error_lines) if error_lines else "  (no errors)",
             server_filter=server_filter or "all",

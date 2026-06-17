@@ -17,7 +17,7 @@ import argparse
 import sys
 
 from utilities import print_header, print_separator, setup_logging
-from analysis.common import query, invoke, render_prompt
+from analysis.common import query, invoke, render_prompt, truncate, head_tail, dedup_errors
 
 log = setup_logging("tools")
 
@@ -223,26 +223,56 @@ def run(args: argparse.Namespace):
         print_separator()
         print("  Invoking AI for interpretation...")
 
+        # Compression settings (all 0 = disabled, opt-in)
+        from utilities import get_settings
+        _cs = get_settings()
+        _max_err = int(_cs.get("analysis_max_error_chars", 0) or 0)
+        _max_rows = int(_cs.get("analysis_max_rows_per_section", 0) or 0)
+        _dedup_pre = int(_cs.get("analysis_error_dedup_prefix", 0) or 0)
+        _dedup_k = int(_cs.get("analysis_error_dedup_top_k", 0) or 0)
+
+        # Optional: fold similar error messages into shared buckets
+        if _dedup_pre > 0:
+            errors_for_prompt = dedup_errors(errors, prefix_len=_dedup_pre, top_k=_dedup_k)
+        else:
+            errors_for_prompt = errors
+
+        # Optional: cap rows per section
+        dist_slice = distribution[:_max_rows] if _max_rows > 0 else distribution
+        err_slice = errors_for_prompt[:_max_rows] if _max_rows > 0 else errors_for_prompt
+        chain_slice = chains[:_max_rows] if _max_rows > 0 else chains
+
         # Build data summary for the prompt
         dist_lines = []
-        for tool, total, errs, rate in distribution:
+        for tool, total, errs, rate in dist_slice:
             dist_lines.append(f"  {tool}: {total} calls, {errs} errors ({rate:.1f}%)")
+        if _max_rows > 0 and len(distribution) > _max_rows:
+            dist_lines.append(f"  ... and {len(distribution) - _max_rows} more tool(s)")
         dist_text = "\n".join(dist_lines) if dist_lines else "  (no data)"
 
         error_lines = []
-        for tool, msg, cnt in errors:
-            error_lines.append(f"  {tool}: [{cnt}x] {msg or '(empty)'}")
+        for tool, msg, cnt in err_slice:
+            # Optional: truncate + head/tail sample for long error messages
+            display_msg = msg or "(empty)"
+            if _max_err > 0:
+                display_msg = head_tail(truncate(display_msg, _max_err), 80, 40)
+            error_lines.append(f"  {tool}: [{cnt}x] {display_msg}")
+        if _max_rows > 0 and len(errors_for_prompt) > _max_rows:
+            error_lines.append(f"  ... and {len(errors_for_prompt) - _max_rows} more error pattern(s)")
         error_text = "\n".join(error_lines) if error_lines else "  (no errors)"
 
         chain_lines = []
-        for sid, tool, cnt in chains:
+        for sid, tool, cnt in chain_slice:
             chain_lines.append(f"  {sid}: {tool} × {cnt}")
+        if _max_rows > 0 and len(chains) > _max_rows:
+            chain_lines.append(f"  ... and {len(chains) - _max_rows} more retry chain(s)")
         chain_text = "\n".join(chain_lines) if chain_lines else "  (none)"
 
         tier, _ = classify_ratio(ratio)
 
         prompt = render_prompt(
             "tool_efficiency",
+            command="tools",  # for enforce_budget section priority
             read_edit_ratio=f"{ratio:.1f}",
             ratio_tier=tier,
             total_reads=str(reads),

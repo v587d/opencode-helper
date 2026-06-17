@@ -1,5 +1,7 @@
 # Contributing to Opencode-Helper
 
+> This is an independent, community-maintained project — not affiliated with or endorsed by the [OpenCode](https://github.com/sst/opencode) team.
+
 Thanks for considering a contribution! This is a personal project, but PRs and issues are welcome.
 
 ## Getting Started

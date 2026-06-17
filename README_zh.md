@@ -14,6 +14,8 @@
 
 </div>
 
+> **声明**：Opencode-Helper 是一个独立的社区维护工具，**并非**由 [OpenCode](https://github.com/sst/opencode) 团队构建、关联或背书。本项目通过读取 OpenCode 的本地数据文件来提供辅助功能，不拥有任何特殊权限。
+
 ---
 
 ## 目录

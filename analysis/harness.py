@@ -313,6 +313,15 @@ def run_ai_analysis(overview: dict, lifecycle_rows: list,
                     switch_rows: list, archive: dict, efficiency: dict,
                     days: int):
     """Render prompt and invoke AI for overall optimization suggestions."""
+    # Compression settings (all 0 = disabled, opt-in)
+    from utilities import get_settings
+    _cs = get_settings()
+    _max_rows = int(_cs.get("analysis_max_rows_per_section", 0) or 0)
+
+    # Session-lifecycle cap (default 10 if not set; opt-in can override)
+    lifecycle_cap = _max_rows if _max_rows > 0 else 10
+    switch_cap = _max_rows if _max_rows > 0 else len(switch_rows)
+
     sections = []
 
     # Session overview
@@ -328,16 +337,20 @@ def run_ai_analysis(overview: dict, lifecycle_rows: list,
 
     # Lifecycle summary
     if lifecycle_rows:
+        # Stats computed across ALL rows (not just the displayed slice)
         durations = [r[4] for r in lifecycle_rows if r[4] is not None and r[4] > 0]
         msg_counts = [r[3] for r in lifecycle_rows]
-        lines = [f"Top {min(10, len(lifecycle_rows))} sessions by message count:"]
-        for row in lifecycle_rows[:10]:
+        lifecycle_slice = lifecycle_rows[:lifecycle_cap]
+        lines = [f"Top {len(lifecycle_slice)} sessions by message count:"]
+        for row in lifecycle_slice:
             sid, title, agent, msg_count, duration, _, cost = row
             lines.append(
                 f"  {sid} | {(title or '(no title)')[:30]} | "
                 f"agent={agent or '?'} | msgs={msg_count} | "
                 f"dur={_fmt_duration(duration)} | cost={_fmt_cost(cost)}"
             )
+        if _max_rows > 0 and len(lifecycle_rows) > lifecycle_cap:
+            lines.append(f"  ... and {len(lifecycle_rows) - lifecycle_cap} more session(s)")
         if durations:
             lines.append(
                 f"\nDuration stats: avg={_fmt_duration(sum(durations)/len(durations))}, "
@@ -352,10 +365,13 @@ def run_ai_analysis(overview: dict, lifecycle_rows: list,
 
     # Switching events
     if switch_rows:
+        switch_slice = switch_rows[:switch_cap]
         lines = ["Event type | Count"]
         lines.append("-" * 40)
-        for evt_type, cnt in switch_rows:
+        for evt_type, cnt in switch_slice:
             lines.append(f"{evt_type or '(unknown)'} | {cnt}")
+        if _max_rows > 0 and len(switch_rows) > switch_cap:
+            lines.append(f"... and {len(switch_rows) - switch_cap} more event(s)")
         sections.append("## Agent/Model Switching\n" + "\n".join(lines))
 
     # Archive status
@@ -379,7 +395,7 @@ def run_ai_analysis(overview: dict, lifecycle_rows: list,
 
     data_block = "\n\n".join(sections)
 
-    prompt = render_prompt("harness", days=str(days), data=data_block)
+    prompt = render_prompt("harness", command="harness", days=str(days), data=data_block)
     if not prompt:
         prompt = (
             f"Analyze the following OpenCode session data from the last {days} days. "

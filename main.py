@@ -31,7 +31,7 @@ from analysis.tools import register_subparser as register_tools
 def main():
     parser = argparse.ArgumentParser(
         prog="och",
-        description="OpenCode Helper — extend OpenCode beyond official capabilities",
+        description="OpenCode Helper — third-party companion tool for OpenCode (not affiliated with the OpenCode team)",
     )
     subparsers = parser.add_subparsers(
         title="commands",

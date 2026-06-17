@@ -342,6 +342,232 @@ def lang_instruction() -> str:
     return _LANG_INSTRUCTIONS.get(lang, lang)
 
 
+# ═══════════════════════════════════════════════════════════════════
+#  Compression helpers (opt-in, controlled by settings.jsonc)
+# ═══════════════════════════════════════════════════════════════════
+
+
+def truncate(text: str, max_chars: int = 0) -> str:
+    """Hard-cap a string at ``max_chars`` characters.
+
+    Appends a ``…[+N chars]`` marker when truncation occurs.  When
+    ``max_chars <= 0`` the text is returned unchanged (compression off).
+
+    Args:
+        text: Input string (may be None / non-str).
+        max_chars: Maximum allowed length.  0 = passthrough.
+
+    Returns:
+        Truncated string, or the original if it fits.
+    """
+    if not text or max_chars <= 0:
+        return text or ""
+    s = str(text)
+    if len(s) <= max_chars:
+        return s
+    # Reserve room for marker: '…[+XXXX chars]' = ~14 chars worst case
+    keep = max(1, max_chars - 14)
+    return s[:keep] + f"…[+{len(s) - keep} chars]"
+
+
+def head_tail(text: str, head: int = 80, tail: int = 40) -> str:
+    """Keep first ``head`` and last ``tail`` characters; collapse the middle.
+
+    Designed for diagnostic error messages: the beginning (error type) and
+    end (root cause / stack tail) usually matter most; the middle is often
+    repetitive stack frames.  Returns the text unchanged if it's already
+    short enough that sampling wouldn't help.
+
+    Args:
+        text: Input string.
+        head: Number of leading characters to preserve.
+        tail: Number of trailing characters to preserve.
+
+    Returns:
+        Sampled string with ``…[N chars omitted]…`` marker in the middle.
+    """
+    if not text:
+        return text if text is None else ""
+    s = str(text)
+    # If text fits comfortably, just return as-is.
+    if len(s) <= head + tail + 20:
+        return s
+    omitted = len(s) - head - tail
+    return f"{s[:head]}…[{omitted} chars omitted]…{s[-tail:]}"
+
+
+def dedup_errors(rows: list, prefix_len: int = 0, top_k: int = 0) -> list:
+    """Collapse error rows with matching prefixes, keep top-K by total count.
+
+    Errors that differ only in a UUID, timestamp, or path are visually
+    distinct but semantically identical.  This function groups rows whose
+    first ``prefix_len`` characters of the error message match (per tool)
+    and sums their counts.
+
+    Args:
+        rows: List of ``(tool, error_msg, count)`` tuples.
+        prefix_len: How many leading chars of error_msg to use as bucket key.
+                    0 = disabled (return rows unchanged).
+        top_k: Maximum number of unique patterns to keep.  0 = no limit.
+               Patterns beyond top_k are folded into a single ``(other)`` row.
+
+    Returns:
+        List of ``(tool, error_msg, total_count)`` tuples.  When
+        collapsing happens, a synthetic ``("(other)", "N more error
+        patterns", total)`` row is appended at the end.
+    """
+    if prefix_len <= 0 or not rows:
+        return rows
+    # Bucket by (tool, prefix)
+    buckets: dict[tuple, list] = {}
+    for row in rows:
+        if not isinstance(row, (tuple, list)) or len(row) < 3:
+            continue
+        tool, msg, cnt = row[0], row[1], row[2]
+        prefix = (str(msg) if msg else "")[:prefix_len]
+        key = (str(tool) if tool else "", prefix)
+        buckets.setdefault(key, []).append((tool, msg, cnt))
+
+    # Sort buckets by total count descending
+    sorted_buckets = sorted(
+        buckets.items(),
+        key=lambda kv: -sum(int(r[2] or 0) for r in kv[1]),
+    )
+
+    out: list = []
+    for key, group in sorted_buckets:
+        if top_k > 0 and len(out) >= top_k:
+            # Fold into the "other" bucket
+            continue
+        total = sum(int(r[2] or 0) for r in group)
+        representative = group[0][1]  # first occurrence's full msg
+        out.append((key[0], representative, total))
+
+    if top_k > 0 and len(buckets) > top_k:
+        other_total = sum(
+            sum(int(r[2] or 0) for r in group)
+            for key, group in sorted_buckets[top_k:]
+        )
+        out.append((
+            "(other)",
+            f"{len(buckets) - top_k} more error patterns",
+            other_total,
+        ))
+
+    return out
+
+
+def _compression_settings() -> dict:
+    """Read compression settings, with safe defaults (all 0 = off)."""
+    s = get_settings()
+    return {
+        "max_error_chars": int(s.get("analysis_max_error_chars", 0) or 0),
+        "max_total_chars": int(s.get("analysis_max_total_chars", 0) or 0),
+        "max_rows": int(s.get("analysis_max_rows_per_section", 0) or 0),
+        "dedup_prefix": int(s.get("analysis_error_dedup_prefix", 0) or 0),
+        "dedup_top_k": int(s.get("analysis_error_dedup_top_k", 0) or 0),
+    }
+
+
+# Section priority: lower = dropped first when prompt is over budget.
+# Each entry is a (section_header_substring, command_name) tuple.
+# command_name is used to pick the right priority list per subcommand.
+_SECTION_PRIORITY: dict[str, list[str]] = {
+    "harness": [
+        "Session Lifecycle",        # large list, droppable
+        "Agent/Model Switching",    # secondary
+        "Session Status",           # archive stats
+        "Efficiency Snapshot",      # tool/MCP/skill counts
+        "Session Overview",         # KEEP — top-level numbers
+    ],
+    "tools": [
+        "Retry Chains",             # often empty
+        "Error Details",            # largest, droppable
+        "Tool Distribution",        # secondary
+        "Read:Edit Ratio",          # KEEP — key metric
+    ],
+    "mcp": [
+        "Error Details",            # largest
+        "MCP Tool Call Overview",   # secondary
+        "Per-Server Summary",       # KEEP — rollup
+    ],
+    "models": [
+        "Model Switching Events",   # secondary
+        "Agent-Model Cross Analysis",
+        "Model Usage Distribution", # KEEP — primary signal
+    ],
+    "skills": [
+        "Skills Referenced in Prompts",
+        "Shell / Platform Usage",
+        "Skill Invocations",        # KEEP — primary signal
+    ],
+}
+
+
+def enforce_budget(prompt: str, command: str = "") -> str:
+    """Cap total prompt length by dropping lowest-priority sections first.
+
+    Section boundaries are detected by lines starting with ``## `` (Markdown
+    H2 headers).  When the prompt is over budget, sections are removed
+    from lowest priority first.  The first section (typically the
+    intro/header) is never dropped.  If still over budget after all
+    droppable sections are removed, hard-truncates the remaining text.
+
+    Disabled when ``analysis_max_total_chars <= 0`` (default).
+
+    Args:
+        prompt: The fully-rendered prompt string.
+        command: Subcommand name to pick the priority list
+                 (one of: harness, tools, mcp, models, skills).
+
+    Returns:
+        Prompt string, possibly with sections removed or truncated.
+    """
+    max_chars = int(get_settings().get("analysis_max_total_chars", 0) or 0)
+    if max_chars <= 0 or len(prompt) <= max_chars:
+        return prompt
+
+    import re
+    # Split on lines that start with '## ' (Markdown H2)
+    parts = re.split(r"(?m)^(?=## )", prompt)
+    if len(parts) <= 1:
+        # No section headers found — just hard-truncate
+        return truncate(prompt, max_chars)
+
+    # First part is the intro / header — always keep
+    intro = parts[0]
+    sections = parts[1:]
+
+    priority = _SECTION_PRIORITY.get(command, [])
+    if not priority:
+        # Unknown command — drop from the end
+        return intro + "".join(sections) if len(intro + "".join(sections)) <= max_chars \
+            else truncate(intro + "".join(sections), max_chars)
+
+    # Build map: section_header_first_line -> section_text
+    def section_header(sec: str) -> str:
+        # sec starts with '## ', first line is the header
+        first_line = sec.split("\n", 1)[0]
+        return first_line.lstrip("# ").strip()
+
+    # Try removing sections from lowest priority first
+    for low_prio_name in priority:
+        if len(intro) + sum(len(s) for s in sections) <= max_chars:
+            break
+        for i, sec in enumerate(sections):
+            hdr = section_header(sec)
+            # Match if priority name appears in header (fuzzy)
+            if low_prio_name.lower() in hdr.lower():
+                sections.pop(i)
+                break
+
+    combined = intro + "".join(sections)
+    if len(combined) <= max_chars:
+        return combined
+    # Still over budget — hard truncate
+    return truncate(combined, max_chars)
+
+
 def render_prompt(name: str, **kwargs) -> str:
     """Load a prompt template from ``prompts/`` and inject data.
 
@@ -349,9 +575,15 @@ def render_prompt(name: str, **kwargs) -> str:
     ``{{lang_instruction}}`` is auto-injected from the ``analysis_language``
     setting — no need to pass it explicitly.
 
+    If ``analysis_max_total_chars`` is set in settings.jsonc, the rendered
+    prompt is passed through ``enforce_budget()`` to drop lowest-priority
+    sections when over budget.  Pass ``command="<name>"`` to enable
+    per-subcommand priority lookup (otherwise no section dropping happens).
+
     Args:
         name: Template filename without extension (e.g. ``"tool_efficiency"``).
-        **kwargs: Values to inject into the template.
+        **kwargs: Values to inject into the template.  May include
+                  ``command`` (str) — subcommand name for budget priority.
 
     Returns:
         Rendered prompt string, or empty string if template not found.
@@ -366,4 +598,11 @@ def render_prompt(name: str, **kwargs) -> str:
     # Auto-inject language instruction if template uses it
     kwargs.setdefault("lang_instruction", lang_instruction())
 
-    return template.format(**kwargs)
+    rendered = template.format(**kwargs)
+
+    # Optional: enforce total prompt budget
+    command = kwargs.get("command", "") or ""
+    if command:
+        rendered = enforce_budget(rendered, command=command)
+
+    return rendered

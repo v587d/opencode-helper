@@ -36,6 +36,12 @@ _DEFAULT_SETTINGS = {
     "analysis_language": "en",
     "analysis_model": None,
     "analysis_variant": None,
+    # ── Analysis compression (0 = disabled, opt-in safety) ──────────
+    "analysis_max_error_chars": 0,
+    "analysis_max_total_chars": 0,
+    "analysis_max_rows_per_section": 0,
+    "analysis_error_dedup_prefix": 0,
+    "analysis_error_dedup_top_k": 0,
 }
 
 

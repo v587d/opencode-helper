@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "opencode-helper"
 version = "1.0.0"
-description = "Extend OpenCode beyond official capabilities — cleanup, analysis, and optimization tools"
+description = "Third-party OpenCode companion: cleanup, analysis, and optimization tools (not affiliated with the OpenCode team)"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"

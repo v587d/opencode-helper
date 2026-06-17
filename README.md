@@ -14,6 +14,8 @@ A unified Python CLI that extends [OpenCode](https://github.com/sst/opencode) be
 
 </div>
 
+> **Disclaimer**: Opencode-Helper is an independent, community-maintained tool. It is **not** affiliated with, endorsed by, or built by the [OpenCode](https://github.com/sst/opencode) team. This project works alongside OpenCode by reading its local data files — it has no special access or privileges.
+
 ---
 
 ## Table of Contents
