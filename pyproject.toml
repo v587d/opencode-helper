@@ -33,4 +33,4 @@ och = "main:main"
 py-modules = ["utilities", "main"]
 
 [tool.setuptools.packages.find]
-include = ["analysis*", "cleanup*"]
+include = ["analysis*", "cleanup*", "drilldown*"]

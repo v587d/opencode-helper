@@ -27,6 +27,7 @@ A unified Python CLI that extends [OpenCode](https://github.com/sst/opencode) be
 - [Commands](#commands)
   - [cleanup](#cleanup)
   - [analysis](#analysis)
+  - [drilldown](#drilldown-1)
 - [Configuration](#configuration)
 - [Safety Model](#safety-model)
 - [Limitations](#limitations)
@@ -66,6 +67,18 @@ Every analysis command reads the live OpenCode database and produces a report. M
 | `mcp` | MCP tool call patterns: per-server breakdown, error clustering, AI root-cause diagnosis. |
 | `models` | Model usage distribution: calls, cost, tokens. Model switching events. Agent-model cross analysis. |
 | `skills` | Skill invocation counts and error rates. Platform compatibility check (flags bash-on-Windows misuse). |
+
+### 🔍 Drilldown
+
+Deep, single-session visualization of agent call topology — see exactly how your agents are orchestrating work.
+
+| Command | What it does |
+|---|---|
+| `drilldown` | **Single-session deep dive.** Visualize agent call topology as an interactive SVG timeline. Shows agent spawns, tool call sequences, parallel execution groups (SpawnGroup), sub-agent recursion, and error patterns. Two output modes: HTML (pan/zoom, dark theme, click-to-focus) and terminal tree (ANSI). |
+
+![Session Topology](assets/session_opology_diagram.png)
+
+> *Interactive session topology diagram showing agent calls, tool invocations, and parallel spawn groups.*
 
 ### ✨ Design highlights
 
@@ -112,6 +125,9 @@ och session --execute
 
 # 6. Purge stale temp files
 och tempfile --execute
+
+# 7. Visualize your latest session's agent call topology
+och drilldown
 ```
 
 ## Commands
@@ -245,6 +261,44 @@ och skills --no-ai
 
 Produces: skill invocation counts and error rates, shell tool usage (flags bash-on-Windows), skills referenced in user messages, **AI compatibility diagnosis**.
 
+### `drilldown`
+
+#### `drilldown` — single-session topology visualization
+
+```bash
+# Visualize latest session (opens interactive HTML in browser)
+och drilldown
+
+# Specified session
+och drilldown --session ses_abc123
+
+# Terminal tree view (no browser needed)
+och drilldown --text
+
+# List sessions available for drilldown
+och drilldown --list
+
+# Custom output path, don't auto-open browser
+och drilldown -o my_report.html --no-open
+
+# Disable sub-agent recursion (root session only)
+och drilldown --no-recurse
+```
+
+![Agent Call Chain](assets/chain.png)
+
+> *Agent call chain showing parent-child relationships and spawn groups.*
+
+- **Two renderers**: HTML (default) — self-contained SVG/CSS/JS, dark theme, pan/zoom, click-to-focus, hover tooltips. `--text` — ANSI terminal tree with `[dN]` depth badges.
+- **Sub-agent recursion**: by default recurses into all child sub-agent sessions via `session.parent_id` CTE. Use `--no-recurse` to show only the root session.
+- **Parallel detection**: SpawnGroups identify concurrent agents spawned from the same parent message. Groups of size ≥2 only.
+- **Output storage**: auto-saves to `~/.local/share/opencode/drilldown@och/` with deterministic naming. Override with `-o`.
+- **Read-only**: pure SELECT — safe to run while OpenCode is active.
+
+![Tool Call Detail](assets/tool.png)
+
+> *Tool call detail showing input arguments, output, timing, and status.*
+
 ## Configuration
 
 All knobs live in [`settings.jsonc`](settings.jsonc) (JSON-with-comments format). Defaults are sensible — you usually only need to touch it to extend the **session save list** or change the **analysis language**.
@@ -347,6 +401,18 @@ Opencode-Helper/
 │       ├── mcp_analysis.md
 │       ├── models.md
 │       └── skills.md
+│
+├── drilldown/              # Single-session topology visualization
+│   ├── cli.py              # Subcommand registration + CLI entry
+│   ├── graph.py            # SessionGraph builder (AgentStep → ToolCall, SpawnGroup)
+│   ├── render.py           # HTML (embedded SVG/CSS/JS) + ANSI terminal renderers
+│   └── storage.py          # Output file naming and storage management
+│
+├── assets/                 # Screenshots for documentation
+│   ├── session_opology_diagram.png
+│   ├── agent.png
+│   ├── chain.png
+│   └── tool.png
 │
 ├── README.md               # This file
 ├── README_zh.md            # 简体中文文档

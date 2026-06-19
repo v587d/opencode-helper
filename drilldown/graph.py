@@ -2,7 +2,8 @@
 graph.py - Build agent call topology from opencode.db.
 
 Reads the part and message tables to construct a directed graph
-of agent invocations and their tool calls for a single session.
+of agent invocations and their tool calls for a session, with
+optional recursion into child sub-agent sessions.
 
 Data model:
     SessionGraph
@@ -10,6 +11,11 @@ Data model:
             -> ToolCall (one tool-type part within that message)
 
 Parallel detection: messages sharing the same parentID ran concurrently.
+
+Sub-agent recursion: when the queried session is a root session
+(parent_id IS NULL), build_graph() recursively includes all child
+sessions linked via session.parent_id, annotating each AgentStep
+with is_subagent, subagent_depth, and session_id.
 
 Zero external dependencies - stdlib only.
 """
@@ -69,6 +75,9 @@ class AgentStep:
     reasoning: list = field(default_factory=list)    # list[str] - thinking text
     text_output: list = field(default_factory=list)  # list[str] - response text
     finish_reason: str = ""   # e.g. "stop", "length", "tool_calls"
+    session_id: str = ""              # which session this step came from
+    is_subagent: bool = False         # True if from a child sub-agent session
+    subagent_depth: int = 0           # 0=root, 1=direct child, 2=grandchild, ...
 
     @property
     def agent_duration_ms(self) -> int:
@@ -121,6 +130,8 @@ class SessionGraph:
     user_messages: list = field(default_factory=list)       # list[dict]
     steps: list = field(default_factory=list)                # list[AgentStep]
     spawn_groups: list = field(default_factory=list)         # list[SpawnGroup]
+    child_sessions: list = field(default_factory=list)       # list[dict] of child session info
+                                                              # each dict: {id, parent_id, title, depth}
 
     @property
     def total_tools(self) -> int:
@@ -221,6 +232,119 @@ def _get_session_info(session_id: str) -> dict | None:
         if row:
             return {"id": row[0], "title": row[1] or "(untitled)", "time_created": row[2]}
         return None
+    finally:
+        conn.close()
+
+
+def _is_root_session(session_id: str) -> bool:
+    """Return True if this session has parent_id IS NULL (i.e., a main agent session).
+
+    Sub-agent sessions spawned via the ``task`` tool have parent_id pointing
+    to their parent session. Root sessions have NULL parent_id.
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT parent_id FROM session WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        return row is not None and row[0] is None
+    finally:
+        conn.close()
+
+
+def _collect_session_tree(root_session_id: str) -> list[dict]:
+    """Recursively collect root session and ALL descendant sessions via parent_id.
+
+    Uses a SQLite recursive CTE to walk the parent_id -> child chain at
+    any depth. Returns a list of dicts ordered by depth then time_created:
+
+        [{"id": ..., "parent_id": ..., "title": ..., "depth": 0},  # root
+         {"id": ..., "parent_id": ..., "title": ..., "depth": 1},  # direct child
+         {"id": ..., "parent_id": ..., "title": ..., "depth": 2},  # grandchild
+         ...]
+
+    If the root has no children, returns just [root]. Safe to call on
+    a sub-agent session_id too -- returns that session alone (it's its
+    own "root" in the resulting tree).
+    """
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            "WITH RECURSIVE session_tree AS ("
+            "  SELECT id, parent_id, title, time_created, 0 AS depth "
+            "  FROM session WHERE id = ? "
+            "  UNION ALL "
+            "  SELECT s.id, s.parent_id, s.title, s.time_created, st.depth + 1 "
+            "  FROM session s "
+            "  INNER JOIN session_tree st ON s.parent_id = st.id "
+            ") "
+            "SELECT id, parent_id, title, depth FROM session_tree "
+            "ORDER BY depth, time_created",
+            (root_session_id,),
+        ).fetchall()
+        return [
+            {"id": r[0], "parent_id": r[1], "title": r[2], "depth": r[3]}
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def _get_messages_multi(session_ids: list[str]) -> list[dict]:
+    """Get messages for multiple sessions in one query.
+
+    Same shape as _get_messages() but accepts a list of session_ids
+    and adds a ``session_id`` key to each returned dict for traceability.
+    """
+    if not session_ids:
+        return []
+    placeholders = ",".join("?" * len(session_ids))
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            f"SELECT id, session_id, time_created, data FROM message "
+            f"WHERE session_id IN ({placeholders}) ORDER BY time_created",
+            session_ids,
+        ).fetchall()
+        result: list[dict] = []
+        for r in rows:
+            msg = {"id": r[0], "session_id": r[1], "msg_time": r[2]}
+            msg.update(json.loads(r[3]))
+            result.append(msg)
+        return result
+    finally:
+        conn.close()
+
+
+def _get_parts_with_message_multi(session_ids: list[str]) -> list[dict]:
+    """Get parts for multiple sessions, with message_id for linking.
+
+    Same shape as _get_parts_with_message() but accepts a list of
+    session_ids and adds a ``session_id`` key to each returned dict.
+    """
+    if not session_ids:
+        return []
+    placeholders = ",".join("?" * len(session_ids))
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            f"SELECT id, message_id, session_id, time_created, data FROM part "
+            f"WHERE session_id IN ({placeholders}) ORDER BY time_created",
+            session_ids,
+        ).fetchall()
+        results: list[dict] = []
+        for r in rows:
+            data = json.loads(r[4])
+            results.append({
+                "id": r[0],
+                "message_id": r[1],
+                "session_id": r[2],
+                "time": r[3],
+                "type": data.get("type", "?"),
+                **data,
+            })
+        return results
     finally:
         conn.close()
 
@@ -374,13 +498,16 @@ def _detect_spawn_groups(steps: list, messages: list[dict]) -> list[SpawnGroup]:
 #  Graph builder (public API)
 # ============================================================================
 
-def build_graph(session_id: str) -> SessionGraph | None:
-    """Build the agent call topology for a single session.
+def build_graph(session_id: str, recurse: bool = True) -> SessionGraph | None:
+    """Build the agent call topology for a session, optionally recursing into sub-agents.
 
-    Queries the session, message, and part tables, then assembles:
-    - User messages (role="user")
-    - Agent steps (role="assistant") with their tool calls
-    - Parallel groups (concurrent agent invocations)
+    When ``recurse=True`` and the session is a root session (parent_id IS NULL),
+    all child sub-agent sessions are included via a recursive CTE walk on
+    ``session.parent_id``. Sub-agent steps are annotated with ``is_subagent``,
+    ``subagent_depth``, and ``session_id`` so renderers can distinguish them.
+
+    When ``recurse=False`` or the session is a sub-agent itself, only the
+    single session is queried (backward-compatible behavior).
 
     Returns None if the session_id does not exist.
     """
@@ -389,8 +516,19 @@ def build_graph(session_id: str) -> SessionGraph | None:
         log.warning("Session not found: %s", session_id)
         return None
 
-    messages = _get_messages(session_id)
-    parts = _get_parts_with_message(session_id)
+    # Determine session set: recurse into children if root + recurse enabled
+    if recurse and _is_root_session(session_id):
+        session_tree = _collect_session_tree(session_id)
+        all_session_ids = [s["id"] for s in session_tree]
+        child_sessions = [s for s in session_tree if s["depth"] > 0]
+        depth_map = {s["id"]: s["depth"] for s in session_tree}
+    else:
+        all_session_ids = [session_id]
+        child_sessions = []
+        depth_map = {session_id: 0}
+
+    messages = _get_messages_multi(all_session_ids)
+    parts = _get_parts_with_message_multi(all_session_ids)
 
     # Index parts by message_id for fast lookup
     parts_by_msg: dict[str, list[dict]] = {}
@@ -413,7 +551,12 @@ def build_graph(session_id: str) -> SessionGraph | None:
             user_msgs.append(user_msg)
         elif role == "assistant":
             msg_parts = parts_by_msg.get(msg["id"], [])
-            agent_steps.append(_parse_agent_step(msg, msg_parts))
+            step = _parse_agent_step(msg, msg_parts)
+            # Set sub-agent fields from session context
+            step.session_id = msg.get("session_id", session_id)
+            step.is_subagent = depth_map.get(step.session_id, 0) > 0
+            step.subagent_depth = depth_map.get(step.session_id, 0)
+            agent_steps.append(step)
 
     spawn_groups = _detect_spawn_groups(agent_steps, messages)
 
@@ -423,14 +566,17 @@ def build_graph(session_id: str) -> SessionGraph | None:
         user_messages=user_msgs,
         steps=agent_steps,
         spawn_groups=spawn_groups,
+        child_sessions=child_sessions,
     )
 
     log.info(
         "Session %s: %d users, %d agents, %d tools (%d err), "
-        "%d spawn groups, %d reasoning chars, %d output chars",
+        "%d spawn groups, %d reasoning chars, %d output chars, "
+        "%d child sessions",
         session_id, len(user_msgs), len(agent_steps),
         graph.total_tools, graph.total_errors, len(spawn_groups),
         graph.total_reasoning_chars, graph.total_output_chars,
+        len(child_sessions),
     )
     return graph
 
@@ -453,17 +599,28 @@ def get_latest_session_id() -> str | None:
         conn.close()
 
 
-def list_sessions(limit: int = 20) -> list[dict]:
-    """List recent sessions with part count, for ``--list``."""
+def list_sessions(limit: int | None = None) -> list[dict]:
+    """List recent sessions with part count, for ``--list``.
+
+    Set ``limit`` to control result count. ``None`` (default) returns all sessions.
+    """
     conn = get_db_connection()
     try:
-        rows = conn.execute(
-            "SELECT s.id, s.title, s.time_created, COUNT(p.id) as part_count "
-            "FROM session s "
-            "LEFT JOIN part p ON p.session_id = s.id "
-            "GROUP BY s.id ORDER BY s.time_created DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        if limit is None:
+            rows = conn.execute(
+                "SELECT s.id, s.title, s.time_created, COUNT(p.id) as part_count "
+                "FROM session s "
+                "LEFT JOIN part p ON p.session_id = s.id "
+                "GROUP BY s.id ORDER BY s.time_created DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT s.id, s.title, s.time_created, COUNT(p.id) as part_count "
+                "FROM session s "
+                "LEFT JOIN part p ON p.session_id = s.id "
+                "GROUP BY s.id ORDER BY s.time_created DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         return [
             {
                 "id": r[0],

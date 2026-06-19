@@ -26,6 +26,7 @@ from analysis.models import register_subparser as register_models
 from analysis.skills import register_subparser as register_skills
 from analysis.harness import register_subparser as register_harness
 from analysis.tools import register_subparser as register_tools
+from drilldown.cli import register_subparser as register_drilldown
 
 
 def main():
@@ -46,6 +47,7 @@ def main():
     register_skills(subparsers)
     register_harness(subparsers)
     register_tools(subparsers)
+    register_drilldown(subparsers)
 
     args = parser.parse_args()
 
