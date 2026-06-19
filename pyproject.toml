@@ -10,9 +10,9 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "shawn", email = "shawn@example.com"},
+    {name = "Shawn", email = "shawnhui1012@gmail.com"},
 ]
-keywords = ["opencode", "cli", "cleanup", "analysis"]
+keywords = ["opencode", "cli", "cleanup", "analysis", "drill down"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
